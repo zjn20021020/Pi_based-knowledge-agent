@@ -1,37 +1,36 @@
 # 📚 Paper Knowledge Agent
 
-> 用对话管理你的学术论文库 —— 从 arXiv 抓取，自动分类，按段落级语义检索。
+> 基于 [Pi Agent](https://github.com/earendil-works/pi) 框架构建的学术论文库管家 —— 对话式管理多个研究主题的论文库，自动从 arXiv 抓取、按段落级语义检索。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![DeepSeek](https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenAI-purple.svg)]()
+[![Built on Pi](https://img.shields.io/badge/built%20on-Pi%20Agent-orange.svg)](https://github.com/earendil-works/pi)
+[![LLM](https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenAI-purple.svg)]()
 
-一个跑在终端里的 **AI 论文库管家**。你只管说"我要研究 RAG"，它会替你建库、爬 arXiv、解析 PDF、切段索引，最后用语义检索把相关段落直接喂回给你。
+一个跑在终端里的 **AI 论文库管家**，**基于 Pi Agent 框架**搭建。你只管说"我要研究 RAG"，它会替你建库、爬 arXiv、解析 PDF、切段索引，最后用语义检索把相关段落直接喂回给你。
 
 ---
 
 ## ✨ 特性
 
+- 🏗️ **基于 Pi Agent 框架** —— 使用 `@earendil-works/pi-coding-agent` 的 `InteractiveMode` 和 `ModelRegistry`，享受 Pi 的富文本 TUI、会话管理、工具调度能力
 - 🗂️ **多库分类管理** —— 每个研究主题一个库，自带描述与元数据
 - 🤖 **智能路由** —— 下载时自动判断论文该进哪个库，检索时自动选择搜哪个库
 - 📥 **arXiv 自动抓取** —— 关键词搜索 + 批量下载 PDF，内置限流策略
 - 📑 **段落级索引** —— PDF 解析后按学术章节（Method、Experiments…）切分，检索结果带章节定位
-- 🔌 **OpenAI 兼容** —— 任何 OpenAI 兼容 API 都能用：DeepSeek、OpenAI、Moonshot、本地模型
+- 🔌 **OpenAI 兼容** —— 通过 Pi 的 ModelRegistry 接入任何 OpenAI 兼容 API：DeepSeek、OpenAI、Moonshot、本地模型
 - 💾 **零外部服务** —— SQLite (sql.js) + JSON 向量存储，开箱即用，不用 Docker
 - 🔄 **Embedding 自动降级** —— OpenAI Embedding 不可用时自动切换 TF-IDF 离线模式
-- 💬 **对话式交互** —— 15 个 function-calling 工具，全程自然语言操作
+- 💬 **15 个自定义工具** —— 注入到 Pi Agent 作为 customTools，全程自然语言操作
 
 ---
 
 ## 📸 效果预览
 
-```text
-✅ Paper Knowledge Agent 已启动
-📊 数据库: index/papers.db
-🤖 模型: deepseek-v4-flash
-💡 输入 'exit' 退出，输入 'help' 查看可用工具
+启动后是 Pi 的富文本 TUI，对话流程大致如下：
 
+```text
 你: 我想做个 RAG 主题的论文库
 
 [工具调用]
@@ -97,6 +96,15 @@ npm start
 
 启动后直接对话即可。输入 `help` 看所有可用工具，`exit` 退出。
 
+> **两个入口的区别**
+>
+> | 命令 | 入口 | 用途 |
+> |---|---|---|
+> | `npm start` | `src/main.ts` | **主入口**，使用 Pi Agent 框架，富文本 TUI |
+> | `npm run start:simple` | `src/main-simple.ts` | 调试用，绕过 Pi 直接 OpenAI SDK，纯文本 readline |
+>
+> 默认用 `npm start`。`start:simple` 仅用于：(a) 排查 Pi 框架本身的问题；(b) 测试 OpenAI 兼容 API 是否能联通。
+
 ### .env 配置
 
 ```bash
@@ -147,18 +155,22 @@ Agent 自带 15 个工具，对话时会自动调用，无需手动指定。
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│   你 (终端对话)                                         │
+│   你 (Pi 终端 TUI)                                      │
 └──────────────┬──────────────────────────────────────────┘
                │ 自然语言
                ▼
 ┌─────────────────────────────────────────────────────────┐
-│   LLM (DeepSeek / OpenAI 兼容)                          │
-│   ─ Function Calling 决定调用哪些工具                   │
+│   Pi Agent Framework                                    │
+│   (@earendil-works/pi-coding-agent)                     │
+│   ─ InteractiveMode (TUI 渲染、输入循环)                │
+│   ─ SessionManager  (会话状态、历史)                    │
+│   ─ ModelRegistry   (OpenAI/DeepSeek 多 provider 适配)  │
+│   ─ Tool Dispatcher (function-calling 调度)             │
 └──────────────┬──────────────────────────────────────────┘
-               │ tool_calls
+               │ customTools 注入
                ▼
 ┌─────────────────────────────────────────────────────────┐
-│   15 个工具 (src/tools/)                                │
+│   15 个自定义工具 (src/tools/)                          │
 │   ┌──────────┬──────────┬──────────┬──────────┐         │
 │   │ 库管理   │ 路由     │ 抓取     │ 检索     │         │
 │   └────┬─────┴────┬─────┴────┬─────┴────┬─────┘         │
@@ -172,14 +184,52 @@ Agent 自带 15 个工具，对话时会自动调用，无需手动指定。
    └─────────┘ └────────┘ └────────┘ └────────────┘
 ```
 
+### Pi 框架集成方式
+
+`src/main.ts` 的核心调用链：
+
+```typescript
+import {
+  InteractiveMode,
+  SessionManager,
+  ModelRegistry,
+  AuthStorage,
+  createAgentSessionRuntime,
+  createAgentSessionFromServices,
+  createAgentSessionServices,
+} from "@earendil-works/pi-coding-agent";
+import { getModel } from "@earendil-works/pi-ai";
+import { ALL_TOOLS } from "./tools/index.ts";
+import { SYSTEM_PROMPT } from "./prompt.ts";
+
+// 1. 通过 ModelRegistry 注册模型 (走 openai provider，base URL 指向 DeepSeek)
+const model = getModel("openai", "gpt-4");
+
+// 2. 把 15 个自定义工具注入 Pi 的 session
+const services = await createAgentSessionServices({
+  cwd, authStorage, modelRegistry,
+  resourceLoaderOptions: { systemPromptOverride: () => SYSTEM_PROMPT },
+});
+await createAgentSessionFromServices({
+  services, sessionManager, sessionStartEvent,
+  model,
+  noTools: "builtin",          // 关掉 Pi 的内置工具
+  customTools: ALL_TOOLS,      // 只暴露我们的 15 个论文工具
+});
+
+// 3. 启动 Pi 的交互式 TUI
+await new InteractiveMode(runtime, { ... }).run();
+```
+
 ### 数据流
 
 1. **抓取**：`search_arxiv` 拉元数据 → 用户挑选 → `download_to_collection` 下载 PDF（每篇间隔 3s 限流）
 2. **索引**：PDF → `pdf-parse` 提取文本 → 按学术章节关键词切分（Method/Experiments/...）→ 切成 ~300 token chunk → Embedding → 写入 JSON 向量库
-3. **检索**：query → Embedding → cosine similarity → Top-K chunks → 带章节定位返回给 LLM
+3. **检索**：query → Embedding → cosine similarity → Top-K chunks → 带章节定位返回给 Pi Agent
 
 ### 关键设计
 
+- **Pi 作为 Agent 内核**：复用 Pi 的会话管理、TUI 渲染、工具调度，业务方只写工具实现
 - **SQLite 存元数据**（库、论文、chunk 索引），向量单独存 JSON —— 简单透明，零运维
 - **Embedding 双后端**：优先 OpenAI `text-embedding-3-small` (1536 维)，超时/无 key 自动降级 TF-IDF
 - **章节级 chunking**：识别 20+ 个常见学术小节标题，检索结果带章节归属，引用更精准
@@ -192,11 +242,11 @@ Agent 自带 15 个工具，对话时会自动调用，无需手动指定。
 ```
 paper-agent/
 ├── src/
-│   ├── main-simple.ts         # 入口：OpenAI SDK + readline 交互循环
-│   ├── main.ts                # 备选入口：Pi Agent TUI 版本（实验性）
-│   ├── prompt.ts              # 系统提示词
+│   ├── main.ts                # ⭐ 主入口：Pi Agent + InteractiveMode TUI
+│   ├── main-simple.ts         # 备用入口：调试时绕过 Pi 的最小 OpenAI SDK 实现
+│   ├── prompt.ts              # 注入到 Pi session 的系统提示词
 │   ├── init-db.ts             # 数据库初始化
-│   ├── tools/                 # Agent 可调用的工具
+│   ├── tools/                 # 注入到 Pi 的 customTools
 │   │   ├── collections/       # 库管理
 │   │   ├── papers/            # 论文管理
 │   │   ├── routing/           # 智能路由
@@ -329,7 +379,7 @@ arXiv 限流，等 10 分钟再试，或减少单次下载数量。代码已内�
 
 ## 🙏 致谢
 
-- [Pi Agent](https://github.com/earendil-works/pi) —— 早期版本基于 Pi Agent 框架，现已切换到直接 OpenAI SDK
+- **[Pi Agent](https://github.com/earendil-works/pi)** —— 本项目的核心框架。Pi 提供了 Agent 会话管理、模型注册、工具调度、TUI 渲染等基础能力，本项目专注于实现论文管理领域的工具集。
 - [arXiv API](https://arxiv.org/help/api/) —— 论文元数据来源
 - [DeepSeek](https://platform.deepseek.com/) —— 性价比最高的中文友好 LLM
 - [pdf-parse](https://github.com/modesty/pdf-parse) / [sql.js](https://github.com/sql-js/sql.js) —— 让"零外部依赖"成为可能

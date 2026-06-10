@@ -8,8 +8,8 @@
   },
   "scripts": {
     "init": "tsx src/init-db.ts",
-    "start": "tsx src/main-simple.ts",
-    "start:pi": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
+    "start:simple": "tsx src/main-simple.ts",
     "build": "tsc"
   },
   "dependencies": {
