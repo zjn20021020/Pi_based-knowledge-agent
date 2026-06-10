@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Local data (论文 PDF + SQLite + 向量索引)
+data/papers/*.pdf
+index/papers.db
+index/papers.db-journal
+index/chroma.db/
+index/vector_*.json
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test scripts (开发期临时脚本)
+test-*.ts
