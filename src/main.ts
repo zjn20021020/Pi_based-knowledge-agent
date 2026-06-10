@@ -1,6 +1,6 @@
 /**
  * Paper Knowledge Agent 入口。
- * 使用 DeepSeek 模型(通过 OpenAI SDK)。
+ * 直接使用 pi-ai 内置的 deepseek provider，无需任何端点劫持。
  */
 import "dotenv/config";
 import {
@@ -25,31 +25,40 @@ await initDb();
 const db = getDb();
 db.exec(SCHEMA);
 
-// 检查 DeepSeek API Key
-const DEEPSEEK_API_KEY = process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
-if (!DEEPSEEK_API_KEY) {
-  console.error("❌ 错误: 未找到 DeepSeek API key");
-  console.error("请在 .env 文件中设置 OPENAI_API_KEY 或 LLM_API_KEY");
+// pi-ai 的 deepseek provider 读 DEEPSEEK_API_KEY，
+// 而 .env 里我们用的是 OPENAI_API_KEY / LLM_API_KEY 做兼容别名，
+// 这里把 key 同步到 pi-ai 期望的环境变量名上。
+const apiKey =
+  process.env.DEEPSEEK_API_KEY ||
+  process.env.OPENAI_API_KEY ||
+  process.env.LLM_API_KEY;
+
+if (!apiKey) {
+  console.error("❌ 错误: 未找到 API key");
+  console.error("请在 .env 文件中设置 DEEPSEEK_API_KEY、OPENAI_API_KEY 或 LLM_API_KEY");
   process.exit(1);
 }
+process.env.DEEPSEEK_API_KEY = apiKey;
 
-// 清除 Anthropic key,避免干扰
+// 清掉可能干扰 provider 选择的 Anthropic / OpenAI key
 delete process.env.ANTHROPIC_API_KEY;
-
-// 设置 DeepSeek base URL
-process.env.OPENAI_BASE_URL = "https://api.deepseek.com";
+// 注意：不要再设置 OPENAI_BASE_URL，pi-ai 的 openai provider 不读这个变量，
+// 而 deepseek provider 自带正确的 baseUrl，无需任何劫持。
 
 console.log("✓ DeepSeek API key 已加载");
-console.log("✓ API 端点: https://api.deepseek.com");
 
-// 初始化 model registry
+// 选择模型：默认 pro，可通过 DEFAULT_MODEL 环境变量覆盖（deepseek-v4-flash / deepseek-v4-pro）
+const modelId =
+  (process.env.DEFAULT_MODEL as "deepseek-v4-pro" | "deepseek-v4-flash") ||
+  "deepseek-v4-pro";
+
 const authStorage = AuthStorage.create();
 const modelRegistry = ModelRegistry.create(authStorage);
 
-// 强制使用 openai provider 的特定模型
-const model = getModel("openai", "gpt-4");
+const model = getModel("deepseek", modelId);
 if (!model) {
-  console.error("❌ 错误: 无法加载 openai/gpt-4 模型");
+  console.error(`❌ 错误: 无法加载 deepseek/${modelId} 模型`);
+  console.error("可选: deepseek-v4-flash, deepseek-v4-pro");
   process.exit(1);
 }
 
@@ -71,7 +80,7 @@ const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionMan
       services,
       sessionManager,
       sessionStartEvent,
-      model, // 明确指定使用 openai/gpt-4 (实际调用 DeepSeek)
+      model,
       noTools: "builtin",
       customTools: ALL_TOOLS,
     })),
