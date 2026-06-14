@@ -18,10 +18,10 @@
 - 🗂️ **多库分类管理** —— 每个研究主题一个库，自带描述与元数据
 - 🤖 **智能路由** —— 下载时自动判断论文该进哪个库，检索时自动选择搜哪个库
 - 📥 **arXiv 自动抓取** —— 关键词搜索 + 批量下载 PDF，内置限流策略
-- 📑 **段落级索引** —— PDF 解析后按学术章节（Method、Experiments…）切分，检索结果带章节定位
-- 🔌 **OpenAI 兼容** —— 通过 Pi 的 ModelRegistry 接入任何 OpenAI 兼容 API：DeepSeek、OpenAI、Moonshot、本地模型
-- 💾 **零外部服务** —— SQLite (sql.js) + JSON 向量存储，开箱即用，不用 Docker
-- 🔄 **Embedding 自动降级** —— OpenAI Embedding 不可用时自动切换 TF-IDF 离线模式
+- 📑 **Layout-aware PDF 解析** —— Python 子进程调 [pdfminer.six](https://github.com/pdfminer/pdfminer.six)，按坐标识别**双栏排版**、过滤 arXiv 竖排水印 / 行号、合并行末断词，再按学术章节（Method、Experiments…）严格切分，检索结果带章节定位
+- 🧬 **多 Embedding 后端** —— OpenAI 兼容协议，可指向 SiliconFlow / 阿里云灵积 / 智谱 / Voyage 等任意服务，401 / 超时优雅降级，空 chunk / 超长 chunk 自动跳过不会让索引崩
+- 🔌 **OpenAI 兼容 LLM** —— 通过 Pi 的 ModelRegistry 接入任何 OpenAI 兼容 API：DeepSeek、OpenAI、Moonshot、本地模型
+- 💾 **零外部服务** —— SQLite (sql.js) + JSON 向量存储，不用 Docker、不用 Redis
 - 💬 **15 个自定义工具** —— 注入到 Pi Agent 作为 customTools，全程自然语言操作
 
 ---
@@ -79,8 +79,9 @@ Agent: 根据库里的论文，主要从三个维度评估：
 ### 环境要求
 
 - **Node.js** ≥ 22.19
-- 一个 OpenAI 兼容的 API key（推荐 [DeepSeek](https://platform.deepseek.com/)，便宜又好用）
-- 可选：OpenAI API key 用于 Embedding（没有也能跑，会自动切 TF-IDF）
+- **Python** ≥ 3.8（用于 PDF layout 解析，子进程调用）
+- LLM API key：推荐 [DeepSeek](https://platform.deepseek.com/)，便宜量大
+- Embedding API key：推荐国内用 [SiliconFlow](https://siliconflow.cn/)（有免费额度，bge-large-en/zh-v1.5 都好用）
 
 ### 安装
 
@@ -88,8 +89,9 @@ Agent: 根据库里的论文，主要从三个维度评估：
 git clone https://github.com/<your-username>/paper-agent.git
 cd paper-agent
 npm install
+pip install -r requirements.txt   # 装 pdfminer.six（Python 端）
 cp .env.example .env
-# 编辑 .env，填入你的 API key
+# 编辑 .env，填 LLM key + Embedding key
 npm run init   # 初始化 SQLite 数据库（只跑一次）
 npm start
 ```
@@ -108,22 +110,30 @@ npm start
 ### .env 配置
 
 ```bash
-# OpenAI 兼容 API（DeepSeek / OpenAI / Moonshot / ...）
-OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_BASE_URL=https://api.deepseek.com
+# === LLM 推理（走 Pi 内置 deepseek provider）===
+DEEPSEEK_API_KEY=sk-your-deepseek-key
+# 兼容别名：main.ts 会 fallback 到 DEEPSEEK_API_KEY
+OPENAI_API_KEY=sk-your-deepseek-key
+LLM_API_KEY=sk-your-deepseek-key
 
-# 模型选择
 DEFAULT_MODEL=deepseek-v4-pro      # 主推理模型
-REVIEW_MODEL=deepseek-v4-pro       # 审稿/检查模型
+REVIEW_MODEL=deepseek-v4-pro
+
+# === Embedding（独立的 OpenAI 兼容服务，推荐 SiliconFlow / 阿里云 / 智谱）===
+EMBED_BASE_URL=https://api.siliconflow.cn/v1
+EMBED_API_KEY=sk-your-siliconflow-key
+EMBED_MODEL=BAAI/bge-large-en-v1.5
 ```
 
-切换到 OpenAI：
+切换到真 OpenAI（国外网络）：
 
 ```bash
-OPENAI_API_KEY=sk-your-openai-key
-OPENAI_BASE_URL=https://api.openai.com
-DEFAULT_MODEL=gpt-4
+EMBED_BASE_URL=https://api.openai.com/v1
+EMBED_API_KEY=sk-your-openai-key
+EMBED_MODEL=text-embedding-3-small
 ```
+
+不配 `EMBED_*` 时降级到 TF-IDF 离线模式，**仅作最后兜底**——TF-IDF 在 query / 文档跨调用时词表不一致，语义检索质量会打折，**强烈建议**接入一个真 embedding 服务。
 
 ---
 
@@ -177,11 +187,18 @@ Agent 自带 15 个工具，对话时会自动调用，无需手动指定。
 └────────┼──────────┼──────────┼──────────┼───────────────┘
          │          │          │          │
          ▼          ▼          ▼          ▼
-   ┌─────────┐ ┌────────┐ ┌────────┐ ┌────────────┐
-   │ SQLite  │ │ Vector │ │ arXiv  │ │ Embedding  │
-   │ (元数据)│ │ Store  │ │  API   │ │  (OpenAI / │
-   │ sql.js  │ │ (JSON) │ │        │ │   TF-IDF)  │
-   └─────────┘ └────────┘ └────────┘ └────────────┘
+   ┌─────────┐ ┌────────┐ ┌────────┐ ┌──────────────────┐
+   │ SQLite  │ │ Vector │ │ arXiv  │ │ Embedding        │
+   │ (元数据)│ │ Store  │ │  API   │ │  (任意 OpenAI    │
+   │ sql.js  │ │ (JSON) │ │        │ │  兼容服务 / TF-IDF)│
+   └─────────┘ └────────┘ └────────┘ └──────────────────┘
+                  ▲
+                  │
+   ┌──────────────┴──────────────┐
+   │ PDF Layout Pipeline         │
+   │ Node ─spawn─> Python        │
+   │ (pdfminer.six 坐标分析)     │
+   └─────────────────────────────┘
 ```
 
 ### Pi 框架集成方式
@@ -224,15 +241,17 @@ await new InteractiveMode(runtime, { ... }).run();
 ### 数据流
 
 1. **抓取**：`search_arxiv` 拉元数据 → 用户挑选 → `download_to_collection` 下载 PDF（每篇间隔 3s 限流）
-2. **索引**：PDF → `pdf-parse` 提取文本 → 按学术章节关键词切分（Method/Experiments/...）→ 切成 ~300 token chunk → Embedding → 写入 JSON 向量库
+2. **索引**：PDF → **Python pdfminer.six 子进程**（坐标重排双栏、过滤水印/行号、合并断词）→ 按章节关键词严格切段 → 切成 ~200 token chunk（超长段落硬切）→ 调 Embedding 服务（批量 32 / 单条重试 / 空 chunk 跳过）→ 写入 JSON 向量库
 3. **检索**：query → Embedding → cosine similarity → Top-K chunks → 带章节定位返回给 Pi Agent
 
 ### 关键设计
 
 - **Pi 作为 Agent 内核**：复用 Pi 的会话管理、TUI 渲染、工具调度，业务方只写工具实现
 - **SQLite 存元数据**（库、论文、chunk 索引），向量单独存 JSON —— 简单透明，零运维
-- **Embedding 双后端**：优先 OpenAI `text-embedding-3-small` (1536 维)，超时/无 key 自动降级 TF-IDF
-- **章节级 chunking**：识别 20+ 个常见学术小节标题，检索结果带章节归属，引用更精准
+- **PDF 解析跨语言**：Node 端写薄 IPC 包装，Python 端用 pdfminer.six 拿到每个文本块的 (x, y) 坐标，按 x 中点聚类成左右栏后分别 top-down 重排，避免双栏论文文本被穿插；行末连字符（`typi-\ncally` → `typically`）也在这一步合并
+- **章节识别严格化**：关键词必须独占一行（≤ 60 字符）才算真章节标题，避免正文里随便提一句 "Method" 就被误判成章节边界
+- **Embedding 后端可换**：用 `EMBED_BASE_URL` + `EMBED_API_KEY` + `EMBED_MODEL` 接任意 OpenAI 兼容服务；失败分类（timeout / auth / 400）做不同处理：批量失败 → 单条重试，单条失败 → 零向量占位，整体失败 → 翻 TF-IDF 兜底
+- **Chunk 上限自适应**：bge-large 这类 512-token 模型对密集表格内容很敏感，chunker 默认目标 200 token、超长段落硬切，确保不撞 embedding 服务的 token 上限
 - **限流保护**：arXiv API 调用间隔 3s（官方推荐），避免被封
 
 ---
@@ -256,14 +275,16 @@ paper-agent/
 │   └── utils/
 │       ├── db.ts              # SQLite (sql.js) 封装
 │       ├── chroma.ts          # 向量存储（JSON 持久化）
-│       ├── embedding.ts       # Embedding（OpenAI + TF-IDF 降级）
+│       ├── embedding.ts       # Embedding 多后端 + 401/超时降级
 │       ├── arxiv-api.ts       # arXiv API 客户端
-│       └── pdf-parser.ts      # PDF 解析 + 章节切分
+│       ├── pdf-parser.ts      # PDF 解析 IPC 包装（spawn Python）
+│       └── pdf_parser.py      # ⭐ Python 端：pdfminer.six layout 分析
 ├── data/
 │   └── papers/                # 下载的 PDF（按 arXiv ID 命名）
 ├── index/
 │   ├── papers.db              # SQLite 元数据
 │   └── vector_papers_*.json   # 各库的向量索引
+├── requirements.txt           # Python 依赖（pdfminer.six）
 ├── .env.example               # 环境变量模板
 └── package.json
 ```
@@ -319,17 +340,17 @@ let response = await client.chat.completions.create({
 });
 ```
 
-### 完全离线运行
+### 完全离线运行（不推荐）
 
-如果没有 OpenAI Embedding 访问权限，系统会自动用 TF-IDF。对**学术论文**这种术语重复率高的场景效果其实不错。
+不配 `EMBED_*` 三件套时系统降级到 TF-IDF。**真心不推荐生产使用**：当前实现里 query 端和文档端的词表是各自独立计算的，跨调用对不齐，余弦相似度的可比性会打折。**只把它当作"完全断网时索引也不会崩"的兜底**。
 
-| | OpenAI Embedding | TF-IDF |
+| | 远程 Embedding（bge-large / text-embedding-3） | TF-IDF（兜底） |
 |---|---|---|
-| 维度 | 1536 (固定) | 取决于词表 |
-| 精度 | 高（理解语义） | 中（基于词频） |
+| 维度 | 1024 / 1536（固定） | 取决于词表 |
+| 精度 | 高（理解语义、识别同义词） | 低（仅词频） |
 | 网络 | 必需 | 离线 |
 | 同义词 | ✅ | ❌ |
-| 学术术语检索 | ✅✅ | ✅✅ |
+| 跨调用一致性 | ✅ | ❌（query 和文档词表错位） |
 
 ### 重置数据库
 
@@ -343,13 +364,22 @@ npm run init
 ## 🐛 常见问题
 
 **Q: 启动报 API key 错误**
-检查 `.env` 文件是否在项目根目录，且 `OPENAI_API_KEY` 有值。
+检查 `.env` 文件是否在项目根目录，且 `DEEPSEEK_API_KEY` 有值。
 
 **Q: arXiv 下载 403**
 arXiv 限流，等 10 分钟再试，或减少单次下载数量。代码已内置每篇 3s 间隔。
 
-**Q: 索引时报 "OPENAI_API_KEY not set"**
-没设 OpenAI key 时会自动切 TF-IDF，不影响功能。要用 OpenAI Embedding 就在 `.env` 加一个真正的 OpenAI key（DeepSeek key 不能用于 Embedding）。
+**Q: PDF 解析报 `python: command not found` 或 `No module named 'pdfminer'`**
+确认装了 Python 3.8+ 和 pdfminer.six。Windows 下 Python 命令可能叫 `py`，把 `PYTHON_BIN=py` 加到 `.env` 即可。装依赖：`pip install -r requirements.txt`。
+
+**Q: PDF 解析失败：`No /Root object! - Is this really a PDF?`**
+PDF 文件本身损坏（下载没完成）。删 `data/papers/<arxiv-id>.pdf` 让 agent 重新下载。
+
+**Q: 索引时 embedding 报 `status 400`**
+通常是 chunk 超过 embedding 模型 token 上限。代码已内置批量失败 → 单条重试 → 零向量占位的兜底，不会让整库崩。如果某一篇大量 chunk 都失败，看下日志里打印的具体错误体。
+
+**Q: 想换更强 / 中文 embedding 模型**
+改 `.env` 里的 `EMBED_MODEL` 即可（中文论文推荐 `BAAI/bge-large-zh-v1.5`，多语言推荐 `BAAI/bge-m3`）。换模型后**必须 rebuild 全部索引**：让 agent 对每个库调 `index_collection`，传 `rebuild=true`。
 
 **Q: 检索没结果**
 确认库已索引完成，用 `index_stats` 检查段落数。
@@ -382,5 +412,6 @@ arXiv 限流，等 10 分钟再试，或减少单次下载数量。代码已内�
 - **[Pi Agent](https://github.com/earendil-works/pi)** —— 本项目的核心框架。Pi 提供了 Agent 会话管理、模型注册、工具调度、TUI 渲染等基础能力，本项目专注于实现论文管理领域的工具集。
 - [arXiv API](https://arxiv.org/help/api/) —— 论文元数据来源
 - [DeepSeek](https://platform.deepseek.com/) —— 性价比最高的中文友好 LLM
-- [pdf-parse](https://github.com/modesty/pdf-parse) / [sql.js](https://github.com/sql-js/sql.js) —— 让"零外部依赖"成为可能
+- [SiliconFlow](https://siliconflow.cn/) —— 国内可用的 OpenAI 兼容 embedding 服务
+- [pdfminer.six](https://github.com/pdfminer/pdfminer.six) / [sql.js](https://github.com/sql-js/sql.js) —— 让 layout-aware PDF 解析与"零外部依赖"成为可能
 
