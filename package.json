@@ -13,11 +13,11 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^0.79.1",
-    "@earendil-works/pi-ai": "^0.79.1",
-    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "@earendil-works/pi-agent-core": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.84.4",
+    "@earendil-works/pi-coding-agent": "^0.84.4",
     "@sinclair/typebox": "^0.34.49",
-    "axios": "^1.7.9",
+    "axios": "^1.20.0",
     "chromadb": "^1.10.4",
     "dotenv": "^17.4.2",
     "pdf-parse": "^1.1.1",
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/pdf-parse": "^1.1.4",
+    "@types/sql.js": "^1.4.11",
     "@types/xml2js": "^0.4.14",
     "openai": "^4.104.0",
     "tsx": "^4.19.2",

@@ -95,12 +95,17 @@ while (true) {
 
         try {
           const args = JSON.parse(toolCall.function.arguments);
-          const result = await tool.execute(toolCall.id, args);
+          // 这些工具不读取运行时上下文；仍按新版 Pi 接口补齐可选参数。
+          const result = await tool.execute(
+            toolCall.id,
+            args,
+            undefined,
+            undefined,
+            undefined as never,
+          );
 
-          const toolResultContent =
-            typeof result.content[0] === "string"
-              ? result.content[0]
-              : result.content[0].text;
+          const textContent = result.content.find((item) => item.type === "text");
+          const toolResultContent = textContent?.text ?? "Tool completed.";
 
           messages.push({
             role: "tool",

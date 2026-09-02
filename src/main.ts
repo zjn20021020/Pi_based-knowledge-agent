@@ -10,11 +10,9 @@ import {
   createAgentSessionServices,
   getAgentDir,
   InteractiveMode,
+  ModelRuntime,
   SessionManager,
-  AuthStorage,
-  ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
-import { getModel } from "@earendil-works/pi-ai";
 
 import { ALL_TOOLS } from "./tools/index.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
@@ -52,10 +50,10 @@ const modelId =
   (process.env.DEFAULT_MODEL as "deepseek-v4-pro" | "deepseek-v4-flash") ||
   "deepseek-v4-pro";
 
-const authStorage = AuthStorage.create();
-const modelRegistry = ModelRegistry.create(authStorage);
-
-const model = getModel("deepseek", modelId);
+// 新版 Pi 用统一运行时管理模型目录和凭据，避免认证状态分散。
+const modelRuntime = await ModelRuntime.create();
+await modelRuntime.setRuntimeApiKey("deepseek", apiKey);
+const model = modelRuntime.getModel("deepseek", modelId);
 if (!model) {
   console.error(`❌ 错误: 无法加载 deepseek/${modelId} 模型`);
   console.error("可选: deepseek-v4-flash, deepseek-v4-pro");
@@ -68,8 +66,7 @@ console.log();
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const services = await createAgentSessionServices({
     cwd,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     resourceLoaderOptions: {
       systemPromptOverride: () => SYSTEM_PROMPT,
     },

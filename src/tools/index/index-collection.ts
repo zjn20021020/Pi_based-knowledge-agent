@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "../define-tool.ts";
 import getDb from "../../utils/db.ts";
 
 import { getOrCreateCollection } from "../../utils/chroma.ts";

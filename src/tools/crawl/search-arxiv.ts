@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "../define-tool.ts";
 import { searchArxiv } from "../../utils/arxiv-api.ts";
 
 export const searchArxivTool = defineTool({

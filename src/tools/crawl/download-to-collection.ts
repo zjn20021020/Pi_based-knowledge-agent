@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "../define-tool.ts";
 import axios from "axios";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
